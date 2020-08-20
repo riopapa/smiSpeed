@@ -2,7 +2,6 @@ package com.example.smispeed;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Environment;
@@ -20,33 +19,31 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity {
 
-    TextView textView;
+    TextView smiText;
     Button button;
-    EditText fromText, toText;
+    EditText fromText, toText, gapText;
     SharedPreferences sharedPreferences;
     int count;
-    long fromRatio, toRatio;
-    Float calcRatio;
+    long fromDuration, toDuration, gapDuration;
+    Float ratioFloat;
+    boolean updatedFlag = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        textView = findViewById(R.id.smi_files);
+        smiText = findViewById(R.id.smi_files);
+        fromText = findViewById(R.id.from_duration);
+        toText = findViewById(R.id.to_duration);
+        gapText = findViewById(R.id.gap_duration);
         button = findViewById(R.id.convert);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -62,46 +59,64 @@ public class MainActivity extends AppCompatActivity {
                 }, 10);
             }
         });
-        fromText = findViewById(R.id.from_ratio);
-        toText = findViewById(R.id.to_ratio);
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        fromRatio = sharedPreferences.getLong("fromRatio", 2565158);
-        toRatio = sharedPreferences.getLong("toRatio", 2580641);
-        calcRatio = (float) toRatio / (float) fromRatio;
-        fromText.setText("" + fromRatio);
+        fromDuration = sharedPreferences.getLong("fromDuration", 2565158);
+        toDuration = sharedPreferences.getLong("toDuration", 2580641);
+        gapDuration = fromDuration - toDuration;
+        ratioFloat = (float) toDuration / (float) fromDuration;
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        fromText.setText("" + fromDuration);
         fromText.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
             public void afterTextChanged(Editable s) {
-                SharedPreferences.Editor editor = sharedPreferences.edit();
-                String ratioS = fromText.getText().toString();
-                fromRatio = Long.parseLong(ratioS);
-                editor.putFloat("fromRatio", fromRatio).apply();
-                calcRatio = (float) toRatio / (float) fromRatio;
+                String str = fromText.getText().toString();
+                fromDuration = Long.parseLong(str);
+                editor.putLong("fromDuration", fromDuration).apply();
+                toDuration = fromDuration - gapDuration;
+                ratioFloat = (float) toDuration / (float) fromDuration;
+                toText.setText("" + toDuration);
             }
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            public void onTextChanged(CharSequence s, int start, int before, int count) { }
         });
-        toText.setText("" + toRatio);
-        fromText.addTextChangedListener(new TextWatcher() {
+        gapText.setText("" + gapDuration);
+        gapText.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
             public void afterTextChanged(Editable s) {
-                SharedPreferences.Editor editor = sharedPreferences.edit();
-                String ratioS = fromText.getText().toString();
-                toRatio = Long.parseLong(ratioS);
-                editor.putLong("toRatio", toRatio).apply();
-                calcRatio = (float) toRatio / (float) fromRatio;
+                String str = gapText.getText().toString();
+                gapDuration = Long.parseLong(str);
+                toDuration = fromDuration - gapDuration;
+                editor.putLong("toDuration", toDuration).apply();
+                toText.setText("" + toDuration);
+                ratioFloat = (float) toDuration / (float) fromDuration;
             }
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            public void onTextChanged(CharSequence s, int start, int before, int count) { }
         });
+        toText.setText("" + toDuration);
+//        toText.addTextChangedListener(new TextWatcher() {
+//            @Override
+//            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
+//            @Override
+//            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) { }
+//            public void afterTextChanged(Editable s) {
+//                String ratioS = toText.getText().toString();
+//                toDuration = Long.parseLong(ratioS);
+//                editor.putLong("toDuration", toDuration).apply();
+//                ratioFloat = (float) toDuration / (float) fromDuration;
+//                gapDuration = fromDuration - toDuration;
+//                gapText.setText(""+gapDuration);
+//            }
+//        });
     }
 
     private void begin_convert() throws IOException {
         count = 0;
         StringBuilder sb = new StringBuilder();
-        File srcDir = new File(Environment.getExternalStorageDirectory(), "Download");
-        File dstDir = new File(Environment.getExternalStorageDirectory(), "Music");
+        File srcPath = new File(Environment.getExternalStorageDirectory(), "Download");
+        File dstPath = new File(Environment.getExternalStorageDirectory(), "Music");
 
-//        File[] files = srcDir.listFiles();
-        File[] files = srcDir.listFiles(new FileFilter() {
+//        File[] files = srcPath.listFiles();
+        File[] files = srcPath.listFiles(new FileFilter() {
             @Override
             public boolean accept(File file) {
 //                return true;
@@ -114,17 +129,17 @@ public class MainActivity extends AppCompatActivity {
             count++;
             sb.append(count).append(":").append(inpName).append(", ");
             this.runOnUiThread(() -> {
-                textView.setText(sb);
-                textView.invalidate();
+                smiText.setText(sb);
+                smiText.invalidate();
             });
 
             Log.w("" + count, inpName);
-            File outFile = new File(dstDir, inpName);
+            File outFile = new File(dstPath, inpName);
             outFile.delete();
             BufferedReader reader = null;
             String line = null;
             try {
-                File smiFile = new File(srcDir, inpName);
+                File smiFile = new File(srcPath, inpName);
                 if (smiFile.exists() && smiFile.isFile() && smiFile.length() > 0) {
                     reader = new BufferedReader(
                             new InputStreamReader(
@@ -144,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
                             String rightLine = line.substring(ending);
                             Log.w(""+lineCnt,leftLine+"~"+number+"~"+rightLine);
                             long num = Long.parseLong(number);
-                            num = (long) ((float) num * calcRatio);
+                            num = (long) ((float) num * ratioFloat);
                             append2file(outFile, leftLine+num+rightLine);
                         }
                     }
